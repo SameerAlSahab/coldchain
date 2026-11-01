@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ColdChain (EWU Innovators)</title>
+<style>
+:root{--bg:#f4f6f8;--fg:#1b2430;--mut:#667085;--card:#fff;--bd:#d9dee5;--ok:#1a9a4a;--warn:#d98a00;--bad:#d32f2f;--ac:#1565c0}
+@media(prefers-color-scheme:dark){:root{--bg:#10151b;--fg:#e6ebf1;--mut:#97a3b3;--card:#1a212a;--bd:#2d3744}}
+*{box-sizing:border-box}
+body{margin:0;padding:12px;max-width:640px;margin-inline:auto;font:16px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+h1{margin:4px 0 2px}h2{margin:20px 0 8px;font-size:1.1rem}h3{margin:0}
+hr{border:0;border-top:1px solid var(--bd);margin:18px 0}
+.muted{color:var(--mut);font-size:.9rem}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.pill{padding:2px 10px;border-radius:99px;font-size:.8rem;font-weight:700;color:#fff}
+.pill.ok{background:var(--ok)}.pill.warn{background:var(--warn)}.pill.bad{background:var(--bad)}.pill.mute{background:#78808c}
+.big{display:flex;align-items:center;gap:14px;margin:8px 0}
+.temp{font-size:2.6rem;font-weight:700;line-height:1}
+.ring{width:64px;height:64px}
+.ring circle{fill:none;stroke-width:7}
+.rg-bg{stroke:var(--bd)}.rg-fg{stroke-linecap:round}
+.rg-fg.ok{stroke:var(--ok)}.rg-fg.warn{stroke:var(--warn)}.rg-fg.bad{stroke:var(--bad)}
+.ring text{fill:var(--fg);font-size:18px;font-weight:700}
+.bar{height:10px;border-radius:6px;background:var(--bd);overflow:hidden;margin:4px 0 8px}
+.bar>i{display:block;height:100%;background:var(--ok)}.bar>i.bad{background:var(--bad)}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.badge{font-size:.8rem;padding:2px 8px;border-radius:6px;border:1px solid var(--bd)}
+.badge.bad{background:var(--bad);color:#fff;border-color:var(--bad)}
+.tag{font-size:.65rem;border:1px solid var(--mut);border-radius:4px;padding:0 4px;color:var(--mut);vertical-align:middle}
+.tip{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(217,138,0,.15);font-size:.9rem}
+#banner{display:none;background:var(--bad);color:#fff;border-radius:10px;padding:10px;margin:10px 0;font-weight:600}
+button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg)}
+button.danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+button:disabled{opacity:.5}
+input{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);width:100%;max-width:100%;margin:2px 0}
+ul{padding-left:18px}
+</style>
+</head>
+<body>
+
+<h1>ColdChain</h1>
+<p>THis wifi page for controling: <span id="ap">-</span></p>
+<p>Internet WIFI: <span id="net">-</span></p>
+<div id="banner"></div>
+
+<div class="card">
+  <div class="row"><b>Power: <span id="pw">-</span></b><span class="muted" id="bat">-</span></div>
+  <div class="badges"><span class="badge" id="mq">MQTT -</span><span class="badge" id="qb">Buffer -</span></div>
+  <p>
+    <button id="pf" data-cmd="pf">Simulate power failure</button>
+    <button id="mute" data-cmd="mute">Mute buzzer</button>
+  </p>
+</div>
+
+<h2>Fridge Tempretures</h2>
+<div id="fridges">Plaese wait...</div>
+
+<hr>
+
+<h2>AI Analysis</h2>
+<p id="aiStatus">-</p>
+<p>Link/API:</p>
+<input id="aiUrl" type="password" autocomplete="off" placeholder="https://...">
+<p>
+<button id="aiSave">Save</button>
+<button id="aiRemove">Remove</button>
+<button id="aiRun" data-cmd="ai">Run Analysis</button>
+</p>
+<p class="muted" id="aiMsg"></p>
+
+<hr>
+
+<h2>WiFi</h2>
+<p id="wifiStatus">-</p>
+<button id="scan">Scan Networks</button>
+<ul id="networks"></ul>
+<p>
+  <input id="ssid" placeholder="Wifi name for net"><br>
+  <input id="pass" type="password" placeholder="net er password"><br>
+  <button id="connect">Connect</button>
+</p>
+
+<script>
+const $ = id => document.getElementById(id);
+const getJson = async (url, opts) => (await fetch(url, opts)).json();
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cmd = c => getJson('/api/cmd', {method: 'POST', body: JSON.stringify({cmd: c})}).then(poll);
+
+function pill(st) {
+  const m = {SAFE: 'ok', WARNING: 'warn', BREACH: 'bad', DISCARD: 'bad'};
+  return '<span class="pill ' + (m[st] || 'mute') + '">' + esc(st) + '</span>';
+}
+function ring(p) {
+  p = Math.max(0, Math.min(100, Math.round(p)));
+  const c = 2 * Math.PI * 26, k = p < 40 ? 'bad' : p < 70 ? 'warn' : 'ok';
+  return '<svg class="ring" viewBox="0 0 64 64"><circle class="rg-bg" cx="32" cy="32" r="26"/>' +
+    '<circle class="rg-fg ' + k + '" cx="32" cy="32" r="26" stroke-dasharray="' + (c * p / 100).toFixed(1) + ' ' + c.toFixed(1) +
+    '" transform="rotate(-90 32 32)"/><text x="32" y="38" text-anchor="middle">' + p + '</text></svg>';
+}
+function card(f, i) {
+  let h = '<div class="card"><div class="row"><h3>Fridge ' + (i + 1) + '</h3>' + pill(f.status) + '</div>';
+  if (!f.present) return h + '<p class="muted">No sensor found on this channel.</p></div>';
+  const ai = f.ai_fresh, tag = '<span class="tag">' + (ai ? 'AI' : 'LOCAL') + '</span>';
+  const hp = ai && f.health_ai != null ? f.health_ai : f.health_local;
+  const pr = ai && f.pred_ai != null ? f.pred_ai : f.pred_local;
+  h += '<div class="big"><div class="temp">' + (f.t == null ? '--' : f.t.toFixed(1)) + '<small> °C</small></div>' +
+       '<div>' + ring(hp) + '<div class="muted" style="text-align:center">health ' + tag + '</div></div></div>';
+  h += '<div>In 30 min: <b style="color:' + (pr > 8 ? 'var(--bad)' : 'inherit') + '">' + Number(pr).toFixed(1) + ' °C</b> ' + tag + '</div>';
+  h += '<div class="muted" style="margin-top:6px">Heat budget left: ' + f.budget_pct + '%</div>' +
+       '<div class="bar"><i class="' + (f.budget_pct < 20 ? 'bad' : '') + '" style="width:' + f.budget_pct + '%"></i></div>';
+  h += '<div class="badges">' +
+       '<span class="badge' + (f.door_alarm ? ' bad' : '') + '">Door ' + (f.door ? 'OPEN ' + f.door_open_s + 's' : 'closed') + '</span>' +
+       '<span class="badge">Comp ' + (f.comp ? 'ON' : 'off') + '</span>' +
+       '<span class="badge' + (f.risk === 'high' ? ' bad' : '') + '">Risk ' + esc(f.risk) + '</span></div>';
+  if (f.risk !== 'low' && f.tip) h += '<div class="tip">&#9888; ' + esc(f.tip) + '</div>';
+  if (f.discard) h += '<p><button class="danger" data-cmd="reset' + i + '" data-ask="1">Admin Reset (Fridge ' + (i + 1) + ')</button></p>';
+  return h + '</div>';
+}
+
+async function poll() {
+  try {
+    const s = await getJson('/api/status');
+    $('ap').textContent = s.ap;
+    $('net').textContent = s.sta ? 'Online (' + s.ip + ')' : 'Offline';
+    $('wifiStatus').textContent = s.sta
+      ? 'Connected to ' + s.ssid + ' (' + s.ip + ')'
+      : (s.ssid ? 'Connecting to ' + s.ssid + '...' : 'Not configured');
+    $('aiStatus').textContent = (s.ai ? 'AI endpoint: set (hidden)' : 'AI endpoint: not set') + ' | state: ' + s.ai_state;
+    $('aiMsg').textContent = s.ai_msg || '';
+    $('aiRun').disabled = !s.ai;
+    $('pw').textContent = s.power;
+    $('bat').textContent = 'Battery ' + s.battery + '% (' + (s.batt_mv / 1000).toFixed(2) + ' V)';
+    $('pf').textContent = s.pf ? 'Restore mains' : 'Simulate power failure';
+    $('mq').textContent = 'MQTT ' + (s.mqtt ? 'up' : 'off');
+    $('qb').textContent = 'Buffer ' + s.q;
+    const alarm = s.f.some(f => f.door_alarm);
+    $('mute').disabled = !alarm; $('mute').textContent = s.muted ? 'Muted' : 'Mute buzzer';
+    const msgs = [];
+    s.f.forEach((f, i) => {
+      if (f.door_alarm) msgs.push('Fridge ' + (i + 1) + ': door open ' + f.door_open_s + ' s');
+      if (f.discard) msgs.push('Fridge ' + (i + 1) + ': DISCARD vaccines');
+      else if (f.present && f.budget_pct < 20) msgs.push('Fridge ' + (i + 1) + ': AT RISK (' + f.budget_pct + '% budget)');
+    });
+    if (s.pf) msgs.push('Power failure: running on battery');
+    $('banner').style.display = msgs.length ? 'block' : 'none';
+    $('banner').innerHTML = msgs.map(esc).join('<br>');
+    $('fridges').innerHTML = s.f.map(card).join('');
+  } catch (e) {}
+}
+setInterval(poll, 2000);
+poll();
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-cmd]');
+  if (!b) return;
+  if (b.dataset.ask && !confirm('Reset heat budget and clear DISCARD? Only after the vaccines were replaced.')) return;
+  cmd(b.dataset.cmd);
+});
+
+$('scan').onclick = async () => {
+  const list = $('networks');
+  list.textContent = 'Scanning...';
+  const nets = await getJson('/api/scan');
+  list.textContent = '';
+  nets.forEach(n => {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.textContent = 'Use';
+    btn.onclick = () => { $('ssid').value = n.ssid; };
+    li.append(n.ssid + (n.open ? ' (open) ' : ' (secured) '), btn);
+    list.append(li);
+  });
+};
+
+$('connect').onclick = async () => {
+  await getJson('/api/wifi', {
+    method: 'POST',
+    body: JSON.stringify({ ssid: $('ssid').value, pass: $('pass').value })
+  });
+  $('wifiStatus').textContent = 'Connecting...';
+};
+
+$('aiSave').onclick = async () => {
+  const v = $('aiUrl').value.trim();
+  if (!v) return;
+  await getJson('/api/aiurl', { method: 'POST', body: JSON.stringify({ url: v }) });
+  $('aiUrl').value = '';
+  poll();
+};
+
+$('aiRemove').onclick = async () => {
+  await getJson('/api/aiurl', { method: 'POST', body: JSON.stringify({ url: '' }) });
+  poll();
+};
+</script>
+
+</body>
+</html>
