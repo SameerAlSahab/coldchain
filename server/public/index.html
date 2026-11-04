@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ColdChain</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui;margin:0;background:#f3f4f6;color:#111}header{background:#0f766e;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header b{font-size:1.2rem;margin-right:auto}nav button{background:#ffffff22;color:#fff;border:0;padding:7px 12px;border-radius:8px;cursor:pointer;margin-right:4px}nav button.on{background:#fff;color:#0f766e}
+main{max-width:980px;margin:16px auto;padding:0 12px}.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px #0001}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.pill{padding:2px 10px;border-radius:99px;color:#fff;font-size:.8rem;font-weight:600}
+.SAFE,.Safe{background:#16a34a}.WARNING,.At{background:#d97706}.BREACH,.Discard,.DISCARD{background:#dc2626}.big{font-size:2.4rem;font-weight:700}
+.row{display:flex;justify-content:space-between;align-items:center;margin:6px 0}.bar{height:10px;background:#e5e7eb;border-radius:9px;overflow:hidden}.bar i{display:block;height:100%}
+table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #eee;text-align:left;font-size:.9rem}input,select,button{font:inherit;padding:7px;border-radius:8px;border:1px solid #ccc}
+button.p{background:#0f766e;color:#fff;border:0;cursor:pointer}button.d{background:#dc2626;color:#fff;border:0;cursor:pointer}.err{color:#dc2626}.muted{color:#666;font-size:.85rem}
+#login{max-width:320px;margin:12vh auto}#login input{width:100%;margin:6px 0}.hide{display:none}.form{display:flex;gap:6px;flex-wrap:wrap}
+</style></head><body>
+<div id="login" class="card hide"><h2>ColdChain Login</h2><input id="u" placeholder="Username"><input id="pw" type="password" placeholder="Password"><button class="p" onclick="login()" style="width:100%">Login</button><p class="err" id="le"></p>
+<p class="muted">Demo: admin/admin123 · pharma/pharma123 · inspector/inspect123</p></div>
+<div id="app" class="hide"><header><b>❄ ColdChain</b><nav id="nav"></nav><span id="who"></span><button onclick="logout()">Logout</button></header><main id="m"></main></div>
+<script>
+let me, tab='dash', timer;
+const $=id=>document.getElementById(id), esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,o){const r=await fetch(p,o&&{method:o.method||'POST',headers:{'Content-Type':'application/json'},body:o.body&&JSON.stringify(o.body)});
+ if(r.status===401&&p!=='/api/login'){show(false);throw 0}const d=await r.json();if(!r.ok)throw new Error(d.error||'error');return d}
+async function login(){try{await api('/api/login',{body:{username:$('u').value,password:$('pw').value}});init()}catch(e){$('le').textContent=e.message}}
+async function logout(){await fetch('/api/logout');show(false)}
+function show(on){$('login').classList.toggle('hide',on);$('app').classList.toggle('hide',!on);if(!on)clearInterval(timer)}
+async function init(){try{me=await api('/api/me');}catch{return show(false)}show(true);$('who').textContent=me.u+' ('+me.role+')';
+ const tabs=[['dash','Dashboard'],['inv','Inventory']];if(me.perms.includes('audit'))tabs.push(['audit','Audit log']);if(me.perms.includes('users'))tabs.push(['users','Users']);
+ $('nav').innerHTML=tabs.map(t=>`<button data-t="${t[0]}" onclick="go('${t[0]}')">${t[1]}</button>`).join('');go(tab)}
+function go(t){tab=t;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));clearInterval(timer);render();if(t==='dash')timer=setInterval(render,2000)}
+async function render(){try{({dash,inv,audit,users})[tab]()}catch{}}
+async function dash(){const d=await api('/api/dashboard');
+ let h=`<div class="card row"><b>Power: ${d.power==='MAINS'?'🔌 MAINS':'🔋 BATTERY'}</b><span>Battery ${d.battery}%</span></div>`;
+ if(me.perms.includes('sim'))h+=`<div class="card"><span class="muted">Admin simulation:</span> <button onclick="sim({cmd:'power'})">Toggle power failure</button> <button onclick="sim({cmd:'door',i:0})">Door F1</button> <button onclick="sim({cmd:'door',i:1})">Door F2</button> <button onclick="sim({cmd:'reset',i:0})">Reset F1</button> <button onclick="sim({cmd:'reset',i:1})">Reset F2</button></div>`;
+ h+='<div class="grid">'+d.fridges.map((f,i)=>{const c=f.budget_pct>40?'#16a34a':f.budget_pct>20?'#d97706':'#dc2626';
+ return `<div class="card"><div class="row"><h3 style="margin:0">Fridge ${i+1}</h3><span class="pill ${f.status}">${f.status}</span></div><div class="big">${f.t}°C</div>
+ <div class="row"><span>Door</span><b>${f.door?'🔓 OPEN ('+f.door_open_s+'s)':'🔒 Closed'}</b></div><div class="row"><span>Compressor</span><b>${f.comp?'ON':'OFF'}</b></div>
+ <div class="row"><span>Power</span><b>${d.power}</b></div><div class="row"><span>Heat budget</span><b>${f.budget_pct}%</b></div><div class="bar"><i style="width:${f.budget_pct}%;background:${c}"></i></div></div>`}).join('')+'</div>';$('m').innerHTML=h}
+async function sim(b){try{await api('/api/sim',{body:b});dash()}catch(e){alert(e.message)}}
+async function inv(){const b=await api('/api/batches');const add=me.perms.includes('inv_add'),mv=me.perms.includes('inv_move'),del=me.perms.includes('inv_delete');
+ let h='';if(add)h+=`<div class="card"><h3 style="margin-top:0">Add batch</h3><div class="form"><input id="av" placeholder="Vaccine name"><input id="aq" type="number" placeholder="Qty" style="width:90px"><select id="af"><option value="0">Fridge 1</option><option value="1">Fridge 2</option></select><input id="ae" type="date"><button class="p" onclick="addB()">Add</button></div><p class="err" id="ie"></p></div>`;
+ h+='<div class="card" style="overflow-x:auto"><table><tr><th>ID</th><th>Vaccine</th><th>Qty</th><th>Fridge</th><th>Expiry</th><th>Status</th><th>Heat used</th><th>QR</th><th></th></tr>'+
+ b.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.vaccine)}</td><td>${x.qty}</td><td>${x.fridge+1}</td><td>${new Date(x.expiry).toLocaleDateString()}</td><td><span class="pill ${x.status.split(' ')[0]}">${x.status}</span></td><td>${x.heat_pct}%</td>
+ <td><a href="/b/${esc(x.id)}" target="_blank"><img src="/qr/${esc(x.id)}.svg" width="56"></a></td><td>${mv?`<button onclick="mvB('${esc(x.id)}',${1-x.fridge})">Move → F${2-x.fridge}</button>`:''} ${del?`<button class="d" onclick="delB('${esc(x.id)}')">Del</button>`:''}</td></tr>`).join('')+'</table></div>';
+ if(!document.activeElement||!/INPUT|SELECT/.test(document.activeElement.tagName))$('m').innerHTML=h}
+async function addB(){try{await api('/api/batches',{body:{vaccine:$('av').value,qty:$('aq').value,fridge:$('af').value,expiry:$('ae').value}});inv()}catch(e){$('ie').textContent=e.message}}
+async function mvB(id,to){try{await api('/api/batches/'+id+'/move',{body:{to}});inv()}catch(e){alert(e.message)}}
+async function delB(id){if(confirm('Delete '+id+'?'))try{await api('/api/batches/'+id,{method:'DELETE'});inv()}catch(e){alert(e.message)}}
+async function audit(){const l=await api('/api/audit');$('m').innerHTML='<div class="card"><table>'+l.map(x=>`<tr><td>${new Date(x.t).toLocaleString()}</td><td>${esc(x.u)}</td><td>${esc(x.a)}</td></tr>`).join('')+'</table></div>'}
+async function users(){const l=await api('/api/users');$('m').innerHTML='<div class="card"><table>'+l.map(x=>`<tr><td>${esc(x.u)}</td><td>${x.role}</td></tr>`).join('')+'</table></div>'}
+init();
+</script></body></html>

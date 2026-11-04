@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vaccine batch status</title>
+<style>body{font-family:system-ui;margin:0;background:#f3f4f6;display:grid;place-items:center;min-height:100vh}.c{background:#fff;border-radius:16px;padding:24px;width:min(92vw,380px);text-align:center;box-shadow:0 4px 20px #0002}
+.s{font-size:2rem;font-weight:700;padding:14px;border-radius:12px;margin:14px 0;color:#fff}.Safe{background:#16a34a}.At{background:#d97706}.Discard{background:#dc2626}p{margin:6px 0;color:#444}</style></head>
+<body><div class="c" id="c">Loading…</div><script>
+const id=decodeURIComponent(location.pathname.split('/').pop());
+fetch('/api/public/batch/'+encodeURIComponent(id)).then(r=>r.json()).then(d=>{
+ if(d.error){c.innerHTML='<h2>Batch not found</h2><p>'+id.replace(/</g,'&lt;')+'</p>';return}
+ const cls=d.status.split(' ')[0], days=Math.ceil((d.expiry-Date.now())/864e5), e=new Date(d.expiry).toLocaleDateString();
+ const esc=s=>s.replace(/[&<>]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
+ c.innerHTML=`<h2>${esc(d.vaccine)}</h2><p>Batch ${esc(d.id)}</p><div class="s ${cls}">${d.status.toUpperCase()}</div><p>Expiry: <b>${e}</b></p><p>${days>0?days+' days left':'EXPIRED'}</p>`});
+</script></body></html>
